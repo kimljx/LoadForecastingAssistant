@@ -1,0 +1,11 @@
+[project]
+name = "load-forecasting-assistant"
+version = "0.1.0"
+description = "面向供需预测模板的负荷预测与容载比反推桌面工具"
+requires-python = ">=3.10"
+authors = [{name = "LoadForecastingAssistant"}]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"

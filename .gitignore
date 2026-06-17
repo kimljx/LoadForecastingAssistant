@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+*.log
+*.tmp
+*.zip
+*.xlsx
+*.xls
+!tests/fixtures/*.xlsx
+!config/*.yaml
+!rules/.gitkeep
+dist/
+build/
+*.spec
