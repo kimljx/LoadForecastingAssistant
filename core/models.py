@@ -119,6 +119,37 @@ class ForecastRules:
     allow_change_commission_year: bool = False
     allow_external_exchange: bool = True
     external_exchange_priority: str = "低"
+    external_exchange_station_name: str = "待指定站点"
+
+
+@dataclass(slots=True)
+class RuleItem:
+    """用户可保存/加载的单条业务规则。
+
+    target 采用稳定的业务键，而不是 Excel 单元格地址，避免模板新增年份或列移动后规则失效。
+    格式：指标|区域|电压等级|指标名称|年份
+    """
+
+    target: str
+    area: str = ""
+    voltage_level: str = ""
+    metric: str = ""
+    year: int | None = None
+    editable: bool = True
+    min_value: float | None = None
+    max_value: float | None = None
+    max_change_pct: float | None = None
+    reason: str = ""
+    source: str = "用户规则"
+
+
+@dataclass(slots=True)
+class RuleValidationResult:
+    """规则项级别校验结果。"""
+
+    target: str
+    status: str  # matched / warning / missing / invalid
+    messages: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -139,6 +170,10 @@ class Adjustment:
     risk_level: str
     source_sheet: str | None = None
     source_cell: str | None = None
+    # 第二版新增：用于把未来新增年份写回到“同一指标行 + 新年份列”。
+    # 如果只有 source_cell，无法区分 2031 等新增年份应该写到哪一列。
+    source_row: int | None = None
+    source_col: int | None = None
     write_back: bool = True
     note: str = ""
 
@@ -178,3 +213,25 @@ class CompatibilityIssue:
     issue_type: str
     content: str
     suggestion: str
+
+
+@dataclass(slots=True)
+class RuleProfileMatchResult:
+    """规则档案与当前工作簿的匹配结果。"""
+
+    level: str  # ok / warning / error
+    matched: bool
+    messages: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class RuleItemValidation:
+    """规则项级别校验结果。
+
+    第二版先校验规则文件中的目标预设和关键指标范围，后续可扩展到单元格级规则。
+    """
+
+    item_id: str
+    target: str
+    status: str  # matched / warning / missing / invalid
+    messages: list[str] = field(default_factory=list)

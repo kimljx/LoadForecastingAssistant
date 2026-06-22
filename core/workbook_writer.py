@@ -15,6 +15,10 @@ from .workbook_loader import LoadedWorkbook, copy_workbook_for_export
 
 
 def build_output_path(input_path: str | Path, output_dir: str | Path | None = None) -> Path:
+    """是什么：生成默认导出文件名。
+
+    为什么：所有结果必须另存为新文件，避免误改原始模板。
+    """
     p = Path(input_path)
     out_dir = Path(output_dir) if output_dir else p.parent
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -22,6 +26,10 @@ def build_output_path(input_path: str | Path, output_dir: str | Path | None = No
 
 
 def _write_cell(ws, cell: str, value, overwrite_formula: bool) -> tuple[bool, str]:
+    """是什么：向目标单元格写入数值并尊重公式覆盖开关。
+
+    为什么：有些位置是公式，默认策略必须可控，避免破坏模板公式。
+    """
     c = ws[cell]
     if isinstance(c.value, str) and c.value.startswith("=") and not overwrite_formula:
         return False, "目标单元格为公式，按规则未覆盖"
@@ -30,6 +38,10 @@ def _write_cell(ws, cell: str, value, overwrite_formula: bool) -> tuple[bool, st
 
 
 def _copy_column_style(ws, from_col: int, to_col: int) -> None:
+    """是什么：复制年份列样式到新增年份列。
+
+    为什么：2031+ 新增列应尽量保持原模板外观一致。
+    """
     ws.column_dimensions[get_column_letter(to_col)].width = ws.column_dimensions[get_column_letter(from_col)].width
     for row in range(1, ws.max_row + 1):
         src = ws.cell(row, from_col)
@@ -43,6 +55,10 @@ def _copy_column_style(ws, from_col: int, to_col: int) -> None:
 
 
 def _find_year_columns(ws) -> dict[int, int]:
+    """是什么：定位工作表中的年份列。
+
+    为什么：写回新增年份时必须知道已有年份列位置。
+    """
     result: dict[int, int] = {}
     for row in range(1, min(ws.max_row, 5) + 1):
         for col in range(1, ws.max_column + 1):
@@ -56,10 +72,11 @@ def _find_year_columns(ws) -> dict[int, int]:
 
 
 def _ensure_year_column(ws, year: int) -> int:
-    """确保某年列存在。若不存在，在最后一个年份列后插入新列。
+    """是什么：确保某年列存在。若不存在，在最后一个年份列后插入新列。
 
-    第一版仅复制样式和值写入，不尝试完整维护所有跨列公式。
-    """
+第一版仅复制样式和值写入，不尝试完整维护所有跨列公式。
+
+为什么：写回副本关系到原始模板安全和新增年份扩展，必须说明写回策略原因。"""
     cols = _find_year_columns(ws)
     if year in cols:
         return cols[year]
@@ -82,28 +99,72 @@ def _ensure_year_column(ws, year: int) -> int:
     return insert_at
 
 
+def _resolve_write_cell(ws, adj: Adjustment) -> tuple[str | None, str]:
+    """是什么：根据调整项定位写回单元格。
+
+第二版优先使用 source_row + 年份列定位。这样当预测 2031、2035
+等模板中不存在的年份时，可以自动扩展年份列并写入正确行，避免误写到
+2030 等已有年份单元格。
+
+为什么：写回副本关系到原始模板安全和新增年份扩展，必须说明写回策略原因。"""
+    if adj.source_row:
+        try:
+            col = _ensure_year_column(ws, adj.year)
+        except Exception as exc:
+            return None, f"无法定位或扩展年份列：{exc}"
+        return ws.cell(adj.source_row, col).coordinate, "按指标行和年份列定位"
+    if adj.source_cell:
+        return adj.source_cell, "按来源单元格定位"
+    return None, "缺少来源行/来源单元格"
+
+
 def _write_adjustments_to_original_sheets(
     wb: openpyxl.Workbook,
     scenario: ScenarioResult,
     rules: ForecastRules,
     overwrite_formula: bool,
 ) -> list[dict]:
+    """是什么：把用户确认的调整项写回导出副本。
+
+第二版改进：
+- 对 2031+ 等模板不存在的年份，使用 source_row + 动态新增年份列写入；
+- 对已有年份，也优先使用“来源行 + 年份列”定位，避免 source_cell 是旧年份单元格时写错；
+- 所有跳过/写入动作完整记录到“预测结果表”。
+
+为什么：写回副本关系到原始模板安全和新增年份扩展，必须说明写回策略原因。"""
     log: list[dict] = []
     for adj in scenario.adjustments:
         if not adj.write_back:
-            log.append({"单元格": adj.source_cell or "", "状态": "未写回", "原因": adj.note or "该调整项仅作为方案提示"})
+            log.append({
+                "工作表": adj.source_sheet or "",
+                "单元格": adj.source_cell or "",
+                "年份": adj.year,
+                "指标": adj.metric,
+                "原值": adj.old_value,
+                "写入值": adj.new_value,
+                "状态": "未写回",
+                "原因": adj.note or "该调整项仅作为方案提示",
+            })
             continue
         if adj.year <= rules.latest_actual_year:
-            log.append({"单元格": adj.source_cell or "", "状态": "跳过", "原因": "现状年不可修改"})
+            log.append({"工作表": adj.source_sheet or "", "单元格": adj.source_cell or "", "年份": adj.year, "指标": adj.metric, "状态": "跳过", "原因": "现状年不可修改"})
             continue
         if not adj.source_sheet or adj.source_sheet not in wb.sheetnames:
-            log.append({"单元格": adj.source_cell or "", "状态": "未写回", "原因": "缺少来源工作表，通常是新增年份或兜底变量"})
+            log.append({"工作表": adj.source_sheet or "", "单元格": adj.source_cell or "", "年份": adj.year, "指标": adj.metric, "状态": "未写回", "原因": "缺少来源工作表，通常是兜底变量或非模板指标"})
             continue
         ws = wb[adj.source_sheet]
-        target_cell = adj.source_cell
-        # 新增年份可能没有原始 source_cell，此处第一版只写已有来源单元格。
-        if not target_cell:
-            log.append({"单元格": "", "状态": "未写回", "原因": "缺少来源单元格"})
+        target_cell = ""
+        try:
+            if adj.source_row:
+                target_col = _ensure_year_column(ws, adj.year)
+                target_cell = ws.cell(adj.source_row, target_col).coordinate
+            elif adj.source_cell:
+                target_cell = adj.source_cell
+            else:
+                log.append({"工作表": adj.source_sheet, "单元格": "", "年份": adj.year, "指标": adj.metric, "状态": "未写回", "原因": "缺少来源行/单元格，无法定位写回位置"})
+                continue
+        except Exception as exc:
+            log.append({"工作表": adj.source_sheet, "单元格": adj.source_cell or "", "年份": adj.year, "指标": adj.metric, "状态": "未写回", "原因": f"定位年份列失败：{exc}"})
             continue
         ok, msg = _write_cell(ws, target_cell, adj.new_value, overwrite_formula=overwrite_formula)
         log.append(
@@ -115,14 +176,17 @@ def _write_adjustments_to_original_sheets(
                 "原值": adj.old_value,
                 "写入值": adj.new_value,
                 "状态": "已写回" if ok else "跳过",
-                "原因": msg,
+                "原因": msg + (f"；{adj.note}" if adj.note else ""),
             }
         )
     return log
 
-
 def _autosize(ws, min_width: int = 10, max_width: int = 38) -> None:
     # 合并单元格会产生 MergedCell，不能依赖 col[0].column_letter。
+    """是什么：自动调整结果表列宽。
+
+    为什么：中文结果说明较长，自动列宽能提升可读性。
+    """
     for idx, col in enumerate(ws.columns, start=1):
         letter = get_column_letter(idx)
         max_len = 0
@@ -134,6 +198,10 @@ def _autosize(ws, min_width: int = 10, max_width: int = 38) -> None:
 
 
 def add_result_sheet(wb: openpyxl.Workbook, scenario: ScenarioResult, rules: ForecastRules, write_log: list[dict]) -> None:
+    """是什么：新增并填充预测结果表。
+
+    为什么：导出副本不仅要写值，还要解释目标达成、调整原因和写回清单。
+    """
     name = "预测结果表"
     if name in wb.sheetnames:
         del wb[name]
@@ -167,6 +235,10 @@ def add_result_sheet(wb: openpyxl.Workbook, scenario: ScenarioResult, rules: For
     row += 1
 
     def section(title: str):
+        """是什么：在结果表中写入分节标题。
+
+        为什么：结果表内容较多，分节可以让业务人员快速阅读。
+        """
         nonlocal row
         ws.cell(row, 1).value = title
         ws.cell(row, 1).font = bold_font
@@ -175,6 +247,10 @@ def add_result_sheet(wb: openpyxl.Workbook, scenario: ScenarioResult, rules: For
         row += 1
 
     def write_table(headers: list[str], rows: list[list]):
+        """是什么：在结果表中写入标准二维表。
+
+        为什么：统一写表逻辑可减少格式不一致和重复代码。
+        """
         nonlocal row
         for i, h in enumerate(headers, start=1):
             c = ws.cell(row, i)
@@ -223,7 +299,37 @@ def add_result_sheet(wb: openpyxl.Workbook, scenario: ScenarioResult, rules: For
     ]
     write_table(["区域", "电压等级", "指标", "年份", "预测/结果值", "来源表", "来源单元格", "是否现状年"], pred_rows)
 
-    section("四、写回单元格清单")
+    section("四、增长率结果")
+    value_map = {(r.area, r.voltage_level, r.metric, r.year): r.value for r in records}
+    growth_rows = []
+    for r in records:
+        if r.metric != "网供负荷" or r.year <= rules.latest_actual_year:
+            continue
+        prev = value_map.get((r.area, r.voltage_level, r.metric, r.year - 1))
+        if prev in (None, 0) or r.value is None:
+            continue
+        g = r.value / prev - 1
+        growth_rows.append([r.area, r.voltage_level, r.metric, r.year, prev, r.value, g, "达标" if rules.annual_growth_min <= g <= rules.annual_growth_max else "预警"])
+    write_table(["区域", "电压等级", "指标", "年份", "上年值", "本年值", "单年增长率", "校核"], growth_rows)
+
+    section("五、关键指标校核")
+    check_rows = []
+    for r in records:
+        if r.metric not in {"容载比", "配变平均负载率", "同时率"} or r.year <= rules.latest_actual_year:
+            continue
+        if r.metric == "容载比":
+            ok = rules.ratio_min <= (r.value or 0) <= rules.ratio_max
+            limit = f"{rules.ratio_min}-{rules.ratio_max}"
+        elif r.metric == "配变平均负载率":
+            ok = rules.transformer_load_rate_min <= (r.value or 0) <= rules.transformer_load_rate_max
+            limit = f"{rules.transformer_load_rate_min}-{rules.transformer_load_rate_max}，软目标{rules.transformer_load_rate_soft_target}"
+        else:
+            ok = rules.coincidence_factor_min <= (r.value or 0) <= rules.coincidence_factor_max
+            limit = f"{rules.coincidence_factor_min}-{rules.coincidence_factor_max}"
+        check_rows.append([r.area, r.voltage_level, r.metric, r.year, r.value, limit, "达标" if ok else "预警"])
+    write_table(["区域", "电压等级", "指标", "年份", "结果值", "规则范围", "校核"], check_rows)
+
+    section("六、写回单元格清单")
     log_rows = []
     for item in write_log:
         log_rows.append([
@@ -233,7 +339,7 @@ def add_result_sheet(wb: openpyxl.Workbook, scenario: ScenarioResult, rules: For
     write_table(["工作表", "单元格", "年份", "指标", "原值", "写入值", "状态", "原因"], log_rows)
 
     if scenario.warnings:
-        section("五、风险提示")
+        section("七、风险提示")
         for w in scenario.warnings:
             ws.cell(row, 1).value = w
             row += 1
@@ -251,10 +357,11 @@ def export_scenario_to_workbook(
     output_path: str | Path,
     overwrite_formula: bool = True,
 ) -> Path:
-    """复制原工作簿，写回方案，并新增“预测结果表”。
+    """是什么：复制原工作簿，写回方案，并新增“预测结果表”。
 
-    原始传入文件绝不修改。
-    """
+原始传入文件绝不修改。
+
+为什么：写回副本关系到原始模板安全和新增年份扩展，必须说明写回策略原因。"""
     out = copy_workbook_for_export(loaded, output_path)
     wb = openpyxl.load_workbook(out)
     write_log = _write_adjustments_to_original_sheets(wb, scenario, rules, overwrite_formula=overwrite_formula)

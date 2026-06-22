@@ -8,11 +8,30 @@
 - 根据增长率目标生成平滑预测；
 - 检查容载比、配变平均负载率、同时率等关键指标；
 - 将用户确认后的调整值写入导出的 Excel 副本；
-- 在导出文件中新增“预测结果表”，记录目标达成、调整项和写回清单。
+- 在导出文件中新增“预测结果表”，记录目标达成、调整项、预测明细和写回清单。
 
 > 重要：程序不会修改用户传入的原始 Excel 文件。所有写回都发生在导出的新文件副本中。
 
-## 当前定位
+---
+
+## 当前版本
+
+V2 MVP
+
+第二版重点：
+
+- 规则档案保存与自动加载；
+- 规则/目标预设匹配校验；
+- 不匹配目标预设标红与删除；
+- 多目标配置；
+- 新增年份动态预测和写回；
+- 更完整的“预测结果表”；
+- 关键方法增加“是什么、为什么”中文注释；
+- 新增中文使用说明和开发文档。
+
+---
+
+## 项目定位
 
 本项目不是“万能 Excel 公式引擎”。它是面向供需预测模板的业务反推工具：
 
@@ -34,12 +53,21 @@ Excel模板导入
 新增预测结果表
 ```
 
+核心思路：
+
+```text
+Excel 作为输入输出载体
+业务模型作为计算核心
+```
+
+---
+
 ## 已支持范围
 
 ### 文件
 
 - `.xlsx`
-- `.xls`（读取后转换为内部临时 xlsx，导出统一为 xlsx）
+- `.xls`（读取后转换为内部临时结构，导出统一为 `.xlsx`）
 
 ### 模板识别
 
@@ -86,9 +114,13 @@ Excel模板导入
 - 项目投产年不可修改；
 - 区外送（+）受（-）电作为低优先级兜底变量。
 
+---
+
 ## 安装与运行
 
-建议使用 Python 3.11。
+建议使用 Python 3.11 或 3.12。
+
+Windows：
 
 ```bash
 python -m venv .venv
@@ -106,11 +138,23 @@ pip install -r requirements.txt
 python main.py
 ```
 
+---
+
+## 文档
+
+- [使用说明](docs/使用说明.md)
+- [开发文档](docs/开发文档.md)
+- [开发方案说明](docs/开发方案.md)
+
+---
+
 ## 测试
 
 ```bash
 pytest
 ```
+
+---
 
 ## 打包 EXE
 
@@ -132,27 +176,7 @@ pyinstaller --noconfirm --onedir --windowed --name LoadForecastingAssistant main
 pyinstaller --noconfirm --onefile --windowed --name LoadForecastingAssistant main.py
 ```
 
-## GitHub 推送
-
-如果本地已经配置 GitHub 权限：
-
-```bash
-git init
-git add .
-git commit -m "初始化负荷预测与容载比反推助手"
-git branch -M main
-git remote add origin https://github.com/kimljx/LoadForecastingAssistant.git
-git push -u origin main
-```
-
-如果使用 Token：
-
-```bash
-git remote set-url origin https://<YOUR_GITHUB_TOKEN>@github.com/kimljx/LoadForecastingAssistant.git
-git push -u origin main
-```
-
-请不要把 Token 写入代码或提交到仓库。
+---
 
 ## 目录结构
 
@@ -166,6 +190,7 @@ LoadForecastingAssistant/
 │   ├── compatibility_checker.py
 │   ├── template_parser.py
 │   ├── rule_engine.py
+│   ├── rule_persistence.py
 │   ├── forecast_engine.py
 │   ├── workbook_writer.py
 │   └── path_visualizer.py
@@ -173,9 +198,22 @@ LoadForecastingAssistant/
 │   ├── main_window.py
 │   └── table_utils.py
 ├── tests/
+├── rules/
 └── docs/
 ```
 
-## 注意事项
+---
 
-第一版会把用户确认后的调整值写入导出的副本。若写回目标是公式单元格，界面提供“允许覆盖公式单元格”选项。实际业务中更推荐逐步增强为“优先写入底层输入项，让原模板公式自动重算”。
+## 安全与注意事项
+
+1. 原始 Excel 文件不会被修改。
+2. 导出文件是原文件副本 + 写回调整值 + 新增“预测结果表”。
+3. 若写回目标是公式单元格，界面提供“允许覆盖公式单元格”选项。
+4. 当前版本仍属于 MVP，正式生产使用前建议用典型模板进行人工复核。
+5. 区外送受电属于低优先级兜底变量，出现该方案时必须人工确认站点和调度口径。
+
+---
+
+## GitHub 推送提醒
+
+请不要把 GitHub Token 写入代码或提交到仓库。

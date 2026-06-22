@@ -22,11 +22,12 @@ _EXTERNAL_LINK_RE = re.compile(r"\[[^\]]+\]")
 
 
 def check_workbook_compatibility(loaded: LoadedWorkbook) -> list[CompatibilityIssue]:
-    """检测当前工具对工作簿的兼容风险。
+    """是什么：检测当前工具对工作簿的兼容风险。
 
-    注意：本工具的核心计算基于业务模型，不要求完整执行每一个 Excel 公式。
-    因此 INDEX/MATCH/SUMIFS 等在这里作为 warning，而不是 error。
-    """
+注意：本工具的核心计算基于业务模型，不要求完整执行每一个 Excel 公式。
+因此 INDEX/MATCH/SUMIFS 等在这里作为 warning，而不是 error。
+
+为什么：兼容性风险必须在正式反推前暴露，避免业务人员在不适配模板上得到误导性结果。"""
     issues: list[CompatibilityIssue] = []
     if loaded.source_format == "xls":
         issues.append(
@@ -99,4 +100,8 @@ def check_workbook_compatibility(loaded: LoadedWorkbook) -> list[CompatibilityIs
 
 
 def has_blocking_errors(issues: list[CompatibilityIssue]) -> bool:
+    """是什么：处理兼容性检测结果。
+
+    为什么：导入模板前必须明确哪些问题会阻断反推。
+    """
     return any(i.level == "error" for i in issues)

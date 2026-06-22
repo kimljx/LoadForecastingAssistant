@@ -45,13 +45,14 @@ _INVALID_ROW_ONLY_REF = re.compile(r'ref="\d+:\d+"')
 
 
 def _repair_xlsx_to_temp(path: Path) -> Path:
-    """修复 xlsx 中 openpyxl 无法读取的部分 XML。
+    """是什么：修复 xlsx 中 openpyxl 无法读取的部分 XML。
 
-    典型问题：WPS/Excel 生成的 autoFilter/sortState 使用了 row-only ref，
-    例如 sortState ref="3:61"，openpyxl 会认为不是合法单元格区域。
+典型问题：WPS/Excel 生成的 autoFilter/sortState 使用了 row-only ref，
+例如 sortState ref="3:61"，openpyxl 会认为不是合法单元格区域。
 
-    处理方式：只在临时副本中删除该 sortState 节点，不改动用户原文件。
-    """
+处理方式：只在临时副本中删除该 sortState 节点，不改动用户原文件。
+
+为什么：Excel 格式兼容和安全读取容易出错，注释需要说明为什么这样处理。"""
     tmp_dir = Path(tempfile.mkdtemp(prefix="lfa_xlsx_repair_"))
     repaired = tmp_dir / path.name
     try:
@@ -81,6 +82,10 @@ def _repair_xlsx_to_temp(path: Path) -> Path:
 
 
 def _load_xlsx(path: Path) -> LoadedWorkbook:
+    """是什么：读取 xlsx 工作簿。
+
+    为什么：xlsx 是主要格式，需要保留公式和值两套工作簿以便解析和展示。
+    """
     repaired = False
     working_path = path
     try:
@@ -105,11 +110,12 @@ def _load_xlsx(path: Path) -> LoadedWorkbook:
 
 
 def _xls_to_temp_xlsx(path: Path) -> Path:
-    """使用 xlrd 读取 xls 并转换为临时 xlsx。
+    """是什么：使用 xlrd 读取 xls 并转换为临时 xlsx。
 
-    说明：xls 的公式、样式和合并单元格支持有限。第一版主要保证分析数据可读，
-    导出仍统一为 xlsx。
-    """
+说明：xls 的公式、样式和合并单元格支持有限。第一版主要保证分析数据可读，
+导出仍统一为 xlsx。
+
+为什么：Excel 格式兼容和安全读取容易出错，注释需要说明为什么这样处理。"""
     try:
         import xlrd  # type: ignore
     except ImportError as exc:  # pragma: no cover
@@ -135,6 +141,10 @@ def _xls_to_temp_xlsx(path: Path) -> Path:
 
 
 def _load_xls(path: Path) -> LoadedWorkbook:
+    """是什么：读取 xls 工作簿并转换为临时 xlsx。
+
+    为什么：历史模板可能是 xls，但导出和后续处理统一走 xlsx 更稳定。
+    """
     converted = _xls_to_temp_xlsx(path)
     formula_wb = openpyxl.load_workbook(converted, data_only=False)
     value_wb = openpyxl.load_workbook(converted, data_only=True)
@@ -149,7 +159,9 @@ def _load_xls(path: Path) -> LoadedWorkbook:
 
 
 def load_workbook_auto(path: str | Path) -> LoadedWorkbook:
-    """根据扩展名自动读取工作簿。"""
+    """是什么：根据扩展名自动读取工作簿。
+
+为什么：Excel 格式兼容和安全读取容易出错，注释需要说明为什么这样处理。"""
     p = Path(path)
     if not p.exists():
         raise WorkbookLoadError(f"文件不存在：{p}")
@@ -162,11 +174,12 @@ def load_workbook_auto(path: str | Path) -> LoadedWorkbook:
 
 
 def copy_workbook_for_export(loaded: LoadedWorkbook, output_path: str | Path) -> Path:
-    """创建导出副本。
+    """是什么：创建导出副本。
 
-    xlsx 输入：优先复制可读取的 working_path；若发生过 XML 修复，则复制修复副本。
-    xls 输入：复制转换后的 xlsx。
-    """
+xlsx 输入：优先复制可读取的 working_path；若发生过 XML 修复，则复制修复副本。
+xls 输入：复制转换后的 xlsx。
+
+为什么：Excel 格式兼容和安全读取容易出错，注释需要说明为什么这样处理。"""
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(loaded.working_path, out)

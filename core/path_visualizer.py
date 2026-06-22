@@ -17,10 +17,11 @@ class TreeNode:
 
 
 def build_business_tree(records: list[MetricRecord], area: str, voltage: str, metric: str, year: int, adjustments: list[Adjustment] | None = None) -> TreeNode:
-    """构建简化业务影响树。
+    """是什么：构建简化业务影响树。
 
-    第一版以业务关系展示为主，不完整解析 Excel 公式链。
-    """
+第一版以业务关系展示为主，不完整解析 Excel 公式链。
+
+为什么：业务人员需要理解上级目标如何影响下级指标，后续也方便替换为图形化展示。"""
     adjustments = adjustments or []
     changed_keys = {(a.area, a.voltage_level, a.metric, a.year) for a in adjustments}
     value_map = {(r.area, r.voltage_level, r.metric, r.year): r.value for r in records}
@@ -41,6 +42,10 @@ def build_business_tree(records: list[MetricRecord], area: str, voltage: str, me
 
 
 def render_tree_text(node: TreeNode, prefix: str = "") -> str:
+    """是什么：把依赖树节点渲染为文本树。
+
+    为什么：第一版可视化用文本树更稳定，后续可替换为图形控件。
+    """
     line = f"{prefix}{node.name}"
     if node.value is not None:
         line += f"：{node.value:.4g}"
